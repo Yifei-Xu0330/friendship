@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-cn">
+<head>
+  <meta charset="UTF-8" />
+  <title>双筋矩形截面受弯设计小工具</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      padding:16px;
+      max-width:900px;
+      margin:auto;
+      background:#f5f5f5;
+    }
+    h1{font-size:22px;margin-bottom:4px;}
+    .card{
+      background:white;
+      border-radius:16px;
+      padding:18px;
+      box-shadow:0 10px 20px rgba(0,0,0,.06);
+      margin-top:14px;
+    }
+    label{display:block;margin-top:10px;font-size:14px;}
+    input{
+      width:140px;
+      padding:6px;
+      margin-top:4px;
+      border-radius:8px;
+      border:1px solid #ccc;
+    }
+    select{
+      padding:6px;
+      border-radius:8px;
+      border:1px solid #ccc;
+      margin-top:4px;
+    }
+    button{
+      padding:10px 18px;
+      margin-top:16px;
+      border-radius:999px;
+      border:0;
+      background:black;
+      color:white;
+      cursor:pointer;
+    }
+    button:hover{opacity:.9;}
+    .row{display:flex;flex-wrap:wrap;gap:18px;}
+    .col{flex:1 1 220px;}
+    .result{
+      font-family:Menlo,Consolas,monospace;
+      margin-top:14px;
+      white-space:pre-wrap;
+      font-size:13px;
+    }
+    small{color:#666;}
+    hr{border:none;border-top:1px dashed #ddd;margin:12px 0;}
+  </style>
+</head>
+<body>
+
+<h1>双筋矩形截面正截面受弯设计 / 验算</h1>
+<p>单位说明：b, h, aₛ, a′ₛ：mm　　M：kN·m　　f：MPa = N/mm²</p>
+
+<div class="card">
+  <label>计算模式：
+    <select id="mode">
+      <option value="design">按弯矩设计配筋</option>
+      <option value="check">已知配筋验算承载力</option>
+    </select>
+  </label>
+
+  <hr>
+
+  <div class="row">
+    <div class="col">
+      <h3>截面几何</h3>
+      <label>b（宽 mm）<br><input id="b" value="250"></label>
+      <label>h（高 mm）<br><input id="h" value="500"></label>
+      <label>aₛ（受拉钢筋合力点距受压缘 mm）<br><input id="as" value="60"></label>
+      <label>a′ₛ（受压钢筋合力点距受压缘 mm）<br><input id="asp" value="40"></label>
+    </div>
+
+    <div class="col">
+      <h3>材料参数</h3>
+      <label>f_c（混凝土设计值 MPa）<br><input id="fc" value="14.3"></label>
+      <label>f_y（受拉钢筋 MPa）<br><input id="fy" value="360"></label>
+      <label>f′_y（受压钢筋 MPa）<br><input id="fyp" value="360"></label>
+      <label>α₁（等效应力块系数）<br><input id="alpha1" value="1.0"></label>
+      <label>ξ_b（极限受压区高度系数）<br><input id="xib" value="0.518"></label>
+    </div>
+
+    <div class="col" id="col-load">
+      <h3>荷载 / 配筋</h3>
+      <label id="label-M">M（弯矩设计值 kN·m）<br><input id="M" value="325"></label>
+      <label id="label-As" style="display:none;">A_s（受拉钢筋面积 mm²）<br><input id="As" value="2600"></label>
+      <label id="label-AsP" style="display:none;">A′_s（受压钢筋面积 mm²）<br><input id="AsP" value="800"></label>
+    </div>
+  </div>
+
+  <button onclick="run()">计算</button>
+  <div class="result" id="out"></div>
+  <small>说明：算法按国内教材常用简化：受压钢筋屈服，受压区取 ξ = ξ_b，用于课堂例题/作业推导。</small>
+</div>
+
+<script>
+function num(id){ return parseFloat(document.getElementById(id).value); }
+
+function switchMode(){
+  const mode = document.getElementById('mode').value;
+  const labelM   = document.getElementById('label-M');
+  const labelAs  = document.getElementById('label-As');
+  const labelAsP = document.getElementById('label-AsP');
+  if(mode === 'design'){
+    labelM.style.display   = '';
+    labelAs.style.display  = 'none';
+    labelAsP.style.display = 'none';
+  }else{
+    labelM.style.display   = 'none';
+    labelAs.style.display  = '';
+    labelAsP.style.display = '';
+  }
+}
+
+document.getElementById('mode').addEventListener('change', switchMode);
+switchMode();
+
+// 主计算函数
+function run(){
+  const mode = document.getElementById('mode').value;
+  const b = num('b'), h = num('h'), as = num('as'), asp = num('asp');
+  const fc = num('fc'), fy = num('fy'), fyp = num('fyp');
+  const alpha1 = num('alpha1'), xib = num('xib');
+  const h0 = h - as;
+  let txt = '';
+
+  if(!b || !h || !fc || !fy || !h0){
+    document.getElementById('out').textContent = '❌ 请检查输入是否完整、为数字。';
+    return;
+  }
+
+  if(mode === 'design'){
+    const M = num('M');
+    const M_Nmm = M * 1e6;
+
+    const alpha_s = M_Nmm / (alpha1 * fc * b * h0 * h0);
+    const alpha_s_max = xib * (1 - 0.5 * xib);
+
+    txt += `【按弯矩设计配筋】
+
+h₀ = ${h0.toFixed(2)} mm
+αₛ = ${alpha_s.toFixed(4)}
+αₛ,max = ${alpha_s_max.toFixed(4)}
+——————————————\n`;
+
+    if(alpha_s <= alpha_s_max){
+      // 单筋
+      const disc = Math.max(0, 1 - 2 * alpha_s);
+      const xi = 1 - Math.sqrt(disc);
+      const x = xi * h0;
+      const As = alpha1 * fc * b * x / fy;
+      const Mu = alpha1 * fc * b * x * (h0 - 0.5 * x) / 1e6;
+
+      txt += `结果：可采用 **单筋截面**
+
+ξ = ${xi.toFixed(4)}
+x = ${x.toFixed(2)} mm
+A_s = ${As.toFixed(1)} mm²
+A′_s = 0（单筋）
+M_u ≈ ${Mu.toFixed(2)} kN·m`;
+    }else{
+      // 双筋
+      const xi = xib;
+      const x = xi * h0;
+      const Mc = alpha1 * fc * b * x * (h0 - 0.5 * x); // N·mm
+      let deltaM = M_Nmm - Mc;
+      if(deltaM < 0) deltaM = 0;
+      const lever = h0 - asp;
+      const AsP = deltaM / (fyp * lever);
+      const As1 = alpha1 * fc * b * x / fy;
+      const As = As1 + AsP * fyp / fy;
+      const Mu = (Mc + fyp * AsP * lever) / 1e6;
+
+      txt += `结果：必须采用 **双筋截面**
+
+ξ = ${xi.toFixed(4)}
+x = ${x.toFixed(2)} mm
+
+混凝土极限弯矩：
+M_c ≈ ${(Mc/1e6).toFixed(2)} kN·m
+
+剩余弯矩由钢筋对偶承担：
+ΔM ≈ ${(deltaM/1e6).toFixed(2)} kN·m
+
+配筋面积：
+A′_s（受压） = ${AsP.toFixed(1)} mm²
+A_s（受拉）  = ${As.toFixed(1)} mm²
+
+截面弯矩承载力：
+M_u ≈ ${Mu.toFixed(2)} kN·m`;
+    }
+  }else{
+    // 已知配筋验算
+    const As = num('As');
+    const AsP = num('AsP');
+
+    txt += `【已知配筋验算承载力】
+
+h₀ = ${h0.toFixed(2)} mm
+A_s = ${As.toFixed(1)} mm²
+A′_s = ${AsP.toFixed(1)} mm²
+——————————————\n`;
+
+    const xi = xib;
+    const x = xi * h0;
+
+    const Cc = alpha1 * fc * b * x;
+    const Cs = fyp * AsP;
+    const Ts = fy * As;
+    const Ctotal = Cc + Cs;
+
+    const Mc = Cc * (h0 - 0.5 * x);
+    const Mcs = Cs * (h0 - asp);
+    const Mu = (Mc + Mcs) / 1e6;
+
+    const alpha_s = (Mu * 1e6) / (alpha1 * fc * b * h0 * h0);
+    const alpha_s_max = xib * (1 - 0.5 * xib);
+
+    txt += `受压区参数：
+ξ = ${xi.toFixed(4)}
+x = ${x.toFixed(2)} mm
+
+内力：
+C_c（混凝土） = ${Cc.toFixed(1)} N
+C_s（受压钢筋） = ${Cs.toFixed(1)} N
+T_s（受拉钢筋） = ${Ts.toFixed(1)} N
+C_total = ${Ctotal.toFixed(1)} N
+T_s - C_total = ${(Ts-Ctotal).toFixed(1)} N（接近 0 说明平衡较好）
+
+弯矩贡献：
+M_c ≈ ${(Mc/1e6).toFixed(2)} kN·m
+M_cs ≈ ${(Mcs/1e6).toFixed(2)} kN·m
+
+弯矩承载力：
+M_u ≈ ${Mu.toFixed(2)} kN·m
+
+由 M_u 反算的相对弯矩：
+αₛ ≈ ${alpha_s.toFixed(4)}
+αₛ,max = ${alpha_s_max.toFixed(4)}`;
+  }
+
+  document.getElementById('out').textContent = txt;
+}
+</script>
+
+</body>
+</html>
